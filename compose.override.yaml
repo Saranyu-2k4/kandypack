@@ -1,0 +1,18 @@
+# Local Development overrides (automatically applied with `docker compose up`)
+services:
+  server:
+    build:
+      target: dev
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount host directory for instant live-reload
+      - .:/app
+      # Mask container virtualenv from host override
+      - /app/.venv
+    environment:
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll

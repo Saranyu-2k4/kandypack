@@ -1,0 +1,9 @@
+# Production configuration
+services:
+  server:
+    build:
+      target: prod
+    ports:
+      - "8501:8501"
+    restart: always
+    # No source code volumes mounted; uses the immutable image filesystem

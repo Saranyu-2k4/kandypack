@@ -1,0 +1,267 @@
+-- Universal trigger function for auto-updating timestamps
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Enum type definitions matching diagram specification
+CREATE TYPE enum_user_role AS ENUM (
+    'admin',
+    'sales',
+    'logistics',
+    'store_manager',
+    'user'
+);
+
+CREATE TYPE enum_employee_role AS ENUM (
+    'DRIVER',
+    'ASSISTANT'
+);
+
+CREATE TYPE enum_employee_status AS ENUM (
+    'Available',
+    'On Leave',
+    'Suspended',
+    'Terminated'
+);
+
+CREATE TYPE enum_vehicle_status AS ENUM (
+    'Active',
+    'Maintenance',
+    'Decommissioned'
+);
+
+CREATE TYPE enum_item_lifecycle_status AS ENUM (
+    'PLACED',
+    'SCHEDULED',
+    'IN_TRANSIT',
+    'STORE_RECEIVED',
+    'OUT_FOR_DELIVERY',
+    'DELIVERED',
+    'DELIVERY_FAILED',
+    'CANCELLED'
+);
+
+-- Table: users (Inline UNIQUE and regex CHECK constraints)
+CREATE TABLE users (
+    id             UUID PRIMARY KEY DEFAULT uuidv7(),
+    name           VARCHAR(255) NOT NULL,
+    email          VARCHAR(255) NOT NULL UNIQUE CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    email_verified TIMESTAMPTZ,
+    image          VARCHAR(512),
+    role           enum_user_role NOT NULL DEFAULT 'user',
+    user_state     VARCHAR(50) NOT NULL DEFAULT 'active',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: sessions (Inline FOREIGN KEY and UNIQUE constraints)
+CREATE TABLE sessions (
+    id         UUID PRIMARY KEY DEFAULT uuidv7(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token      VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: stores (Inline UNIQUE and FK constraints)
+CREATE TABLE stores (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    store_name VARCHAR(255) NOT NULL UNIQUE,
+    address    TEXT NOT NULL,
+    manager_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: routes (Inline FK and range CHECK constraints)
+CREATE TABLE routes (
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    store_id              BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    route_name            VARCHAR(255) NOT NULL,
+    service_area          VARCHAR(255) NOT NULL,
+    max_delivery_time_hrs NUMERIC(5, 2) NOT NULL CHECK (max_delivery_time_hrs > 0),
+    created_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by            UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: trucks (Inline UNIQUE, FK, and CHECK constraints)
+CREATE TABLE trucks (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    store_id       BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    license_plate  VARCHAR(50) NOT NULL UNIQUE,
+    capacity       NUMERIC(10, 2) NOT NULL CHECK (capacity > 0),
+    vehicle_status enum_vehicle_status NOT NULL DEFAULT 'Active',
+    route_id       BIGINT REFERENCES routes(id) ON DELETE SET NULL,
+    created_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: employees (Inline FK, phone regex CHECK, and points CHECK)
+CREATE TABLE employees (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    store_id        BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    employee_name   VARCHAR(255) NOT NULL,
+    employee_role   enum_employee_role NOT NULL,
+    contact_phone   VARCHAR(50) NOT NULL CHECK (contact_phone ~ '^[0-9\+\-\s\(\)\.]{7,20}$'),
+    employee_status enum_employee_status NOT NULL DEFAULT 'Available',
+    points          INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0),
+    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: customers (Inline FK, phone regex CHECK)
+CREATE TABLE customers (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_name    VARCHAR(255) NOT NULL,
+    address          TEXT NOT NULL,
+    contact_phone    VARCHAR(50) NOT NULL CHECK (contact_phone ~ '^[0-9\+\-\s\(\)\.]{7,20}$'),
+    user_id          UUID REFERENCES users(id) ON DELETE SET NULL,
+    default_route_id BIGINT REFERENCES routes(id) ON DELETE SET NULL,
+    metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: products (Inline CHECK constraints for positive numeric values)
+CREATE TABLE products (
+    id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    product_name            VARCHAR(255) NOT NULL,
+    unit_price              NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
+    space_consumption_unit  NUMERIC(10, 4) NOT NULL CHECK (space_consumption_unit > 0),
+    metadata                JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by              UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by              UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: orders (Inline FK and phone regex CHECK)
+CREATE TABLE orders (
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_id            BIGINT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    route_id               BIGINT NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,
+    delivery_address       TEXT NOT NULL,
+    contact_phone          VARCHAR(50) NOT NULL CHECK (contact_phone ~ '^[0-9\+\-\s\(\)\.]{7,20}$'),
+    order_date             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    prefered_delivery_slot VARCHAR(100),
+    created_by             UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by             UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: order_items (Inline FK, CHECKs, and STORED GENERATED total_price)
+CREATE TABLE order_items (
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id              BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    product_id            BIGINT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    unit_price            NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
+    quantity              INTEGER NOT NULL CHECK (quantity > 0),
+    total_price           NUMERIC(14, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    item_lifecycle_status enum_item_lifecycle_status NOT NULL DEFAULT 'PLACED',
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: train_schedules (Inline FK and CHECK)
+CREATE TABLE train_schedules (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    destination_store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    departure_timestamp  TIMESTAMPTZ NOT NULL,
+    max_capacity         NUMERIC(10, 2) NOT NULL CHECK (max_capacity > 0),
+    created_by           UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by           UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: train_allocations (Inline UNIQUE and FK)
+CREATE TABLE train_allocations (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_item_id BIGINT NOT NULL UNIQUE REFERENCES order_items(id) ON DELETE CASCADE,
+    train_id      BIGINT NOT NULL REFERENCES train_schedules(id) ON DELETE CASCADE,
+    created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: truck_schedules (Inline FKs, STORED GENERATED duration_hours, and time window CHECK)
+CREATE TABLE truck_schedules (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    truck_id        BIGINT NOT NULL REFERENCES trucks(id) ON DELETE CASCADE,
+    route_id        BIGINT NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+    driver_id       BIGINT NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    assistant_id    BIGINT REFERENCES employees(id) ON DELETE SET NULL,
+    start_timestamp TIMESTAMPTZ NOT NULL,
+    end_timestamp   TIMESTAMPTZ NOT NULL,
+    duration_hours  NUMERIC(8, 2) GENERATED ALWAYS AS (EXTRACT(EPOCH FROM (end_timestamp - start_timestamp)) / 3600.0) STORED,
+    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_truck_schedules_time_window CHECK (end_timestamp > start_timestamp)
+);
+
+-- Table: truck_item_deliveries (Inline UNIQUE and FK)
+CREATE TABLE truck_item_deliveries (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    truck_schedule_id BIGINT NOT NULL REFERENCES truck_schedules(id) ON DELETE CASCADE,
+    order_item_id     BIGINT NOT NULL UNIQUE REFERENCES order_items(id) ON DELETE CASCADE,
+    delivered_at      TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Foreign Key B-Tree Indexes (PostgreSQL engine requires standalone CREATE INDEX statements for non-unique indexes)
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_stores_manager_id ON stores(manager_id);
+CREATE INDEX idx_routes_store_id ON routes(store_id);
+CREATE INDEX idx_trucks_store_id ON trucks(store_id);
+CREATE INDEX idx_trucks_route_id ON trucks(route_id);
+CREATE INDEX idx_employees_store_id ON employees(store_id);
+CREATE INDEX idx_customers_user_id ON customers(user_id);
+CREATE INDEX idx_customers_default_route_id ON customers(default_route_id);
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+CREATE INDEX idx_orders_route_id ON orders(route_id);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX idx_order_items_lifecycle ON order_items(item_lifecycle_status);
+CREATE INDEX idx_train_schedules_dest_store ON train_schedules(destination_store_id);
+CREATE INDEX idx_train_allocations_train_id ON train_allocations(train_id);
+CREATE INDEX idx_truck_schedules_truck_id ON truck_schedules(truck_id);
+CREATE INDEX idx_truck_schedules_route_id ON truck_schedules(route_id);
+CREATE INDEX idx_truck_schedules_driver_id ON truck_schedules(driver_id);
+CREATE INDEX idx_truck_schedules_assistant_id ON truck_schedules(assistant_id);
+CREATE INDEX idx_truck_deliveries_schedule ON truck_item_deliveries(truck_schedule_id);
+
+-- Triggers for automatic updated_at maintenance (PostgreSQL engine requires standalone CREATE TRIGGER statements)
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_sessions_updated_at BEFORE UPDATE ON sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_stores_updated_at BEFORE UPDATE ON stores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_routes_updated_at BEFORE UPDATE ON routes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_trucks_updated_at BEFORE UPDATE ON trucks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_employees_updated_at BEFORE UPDATE ON employees FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_order_items_updated_at BEFORE UPDATE ON order_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_train_schedules_updated_at BEFORE UPDATE ON train_schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_train_allocations_updated_at BEFORE UPDATE ON train_allocations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_truck_schedules_updated_at BEFORE UPDATE ON truck_schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_truck_item_deliveries_updated_at BEFORE UPDATE ON truck_item_deliveries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
