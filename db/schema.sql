@@ -7,7 +7,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Enum type definitions matching diagram specification
+-- Enum type definitions
 CREATE TYPE enum_user_role AS ENUM (
     'admin',
     'sales',
@@ -45,7 +45,6 @@ CREATE TYPE enum_item_lifecycle_status AS ENUM (
     'CANCELLED'
 );
 
--- Table: users (Inline UNIQUE and regex CHECK constraints)
 CREATE TABLE users (
     id             UUID PRIMARY KEY DEFAULT uuidv7(),
     name           VARCHAR(255) NOT NULL,
@@ -58,7 +57,6 @@ CREATE TABLE users (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: sessions (Inline FOREIGN KEY and UNIQUE constraints)
 CREATE TABLE sessions (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -68,7 +66,6 @@ CREATE TABLE sessions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: stores (Inline UNIQUE and FK constraints)
 CREATE TABLE stores (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     store_name VARCHAR(255) NOT NULL UNIQUE,
@@ -80,7 +77,6 @@ CREATE TABLE stores (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: routes (Inline FK and range CHECK constraints)
 CREATE TABLE routes (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     store_id              BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -93,7 +89,6 @@ CREATE TABLE routes (
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: trucks (Inline UNIQUE, FK, and CHECK constraints)
 CREATE TABLE trucks (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     store_id       BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -107,7 +102,6 @@ CREATE TABLE trucks (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: employees (Inline FK, phone regex CHECK, and points CHECK)
 CREATE TABLE employees (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     store_id        BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -122,7 +116,6 @@ CREATE TABLE employees (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: customers (Inline FK, phone regex CHECK)
 CREATE TABLE customers (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     customer_name    VARCHAR(255) NOT NULL,
@@ -137,7 +130,6 @@ CREATE TABLE customers (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: products (Inline CHECK constraints for positive numeric values)
 CREATE TABLE products (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     product_name            VARCHAR(255) NOT NULL,
@@ -150,7 +142,6 @@ CREATE TABLE products (
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: orders (Inline FK and phone regex CHECK)
 CREATE TABLE orders (
     id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     customer_id            BIGINT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
@@ -165,7 +156,6 @@ CREATE TABLE orders (
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: order_items (Inline FK, CHECKs, and STORED GENERATED total_price)
 CREATE TABLE order_items (
     id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id              BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -178,7 +168,6 @@ CREATE TABLE order_items (
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: train_schedules (Inline FK and CHECK)
 CREATE TABLE train_schedules (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     destination_store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -190,7 +179,6 @@ CREATE TABLE train_schedules (
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: train_allocations (Inline UNIQUE and FK)
 CREATE TABLE train_allocations (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_item_id BIGINT NOT NULL UNIQUE REFERENCES order_items(id) ON DELETE CASCADE,
@@ -200,7 +188,6 @@ CREATE TABLE train_allocations (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: truck_schedules (Inline FKs, STORED GENERATED duration_hours, and time window CHECK)
 CREATE TABLE truck_schedules (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     truck_id        BIGINT NOT NULL REFERENCES trucks(id) ON DELETE CASCADE,
@@ -218,7 +205,6 @@ CREATE TABLE truck_schedules (
     CONSTRAINT chk_truck_schedules_time_window CHECK (end_timestamp > start_timestamp)
 );
 
--- Table: truck_item_deliveries (Inline UNIQUE and FK)
 CREATE TABLE truck_item_deliveries (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     truck_schedule_id BIGINT NOT NULL REFERENCES truck_schedules(id) ON DELETE CASCADE,
@@ -228,29 +214,38 @@ CREATE TABLE truck_item_deliveries (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Foreign Key B-Tree Indexes (PostgreSQL engine requires standalone CREATE INDEX statements for non-unique indexes)
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+
 CREATE INDEX idx_stores_manager_id ON stores(manager_id);
+
 CREATE INDEX idx_routes_store_id ON routes(store_id);
+
 CREATE INDEX idx_trucks_store_id ON trucks(store_id);
 CREATE INDEX idx_trucks_route_id ON trucks(route_id);
+
 CREATE INDEX idx_employees_store_id ON employees(store_id);
+
 CREATE INDEX idx_customers_user_id ON customers(user_id);
 CREATE INDEX idx_customers_default_route_id ON customers(default_route_id);
+
 CREATE INDEX idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX idx_orders_route_id ON orders(route_id);
+
 CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX idx_order_items_product_id ON order_items(product_id);
 CREATE INDEX idx_order_items_lifecycle ON order_items(item_lifecycle_status);
+
 CREATE INDEX idx_train_schedules_dest_store ON train_schedules(destination_store_id);
+
 CREATE INDEX idx_train_allocations_train_id ON train_allocations(train_id);
+
 CREATE INDEX idx_truck_schedules_truck_id ON truck_schedules(truck_id);
 CREATE INDEX idx_truck_schedules_route_id ON truck_schedules(route_id);
 CREATE INDEX idx_truck_schedules_driver_id ON truck_schedules(driver_id);
 CREATE INDEX idx_truck_schedules_assistant_id ON truck_schedules(assistant_id);
+
 CREATE INDEX idx_truck_deliveries_schedule ON truck_item_deliveries(truck_schedule_id);
 
--- Triggers for automatic updated_at maintenance (PostgreSQL engine requires standalone CREATE TRIGGER statements)
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_sessions_updated_at BEFORE UPDATE ON sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_stores_updated_at BEFORE UPDATE ON stores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
