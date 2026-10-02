@@ -1,3 +1,27 @@
+BEGIN;
+
+DROP TABLE IF EXISTS truck_item_deliveries CASCADE;
+DROP TABLE IF EXISTS truck_schedules CASCADE;
+DROP TABLE IF EXISTS train_allocations CASCADE;
+DROP TABLE IF EXISTS train_schedules CASCADE;
+DROP TABLE IF EXISTS order_items CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS trucks CASCADE;
+DROP TABLE IF EXISTS routes CASCADE;
+DROP TABLE IF EXISTS stores CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+DROP TYPE IF EXISTS enum_item_lifecycle_status CASCADE;
+DROP TYPE IF EXISTS enum_vehicle_status CASCADE;
+DROP TYPE IF EXISTS enum_employee_status CASCADE;
+DROP TYPE IF EXISTS enum_employee_role CASCADE;
+DROP TYPE IF EXISTS enum_user_role CASCADE;
+
+DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+
 -- Universal trigger function for auto-updating timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -52,18 +76,9 @@ CREATE TABLE users (
     email_verified TIMESTAMPTZ,
     image          VARCHAR(512),
     role           enum_user_role NOT NULL DEFAULT 'user',
-    user_state     VARCHAR(50) NOT NULL DEFAULT 'active',
+    password_hash  VARCHAR(255) NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE sessions (
-    id         UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token      VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE stores (
@@ -214,7 +229,6 @@ CREATE TABLE truck_item_deliveries (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 
 CREATE INDEX idx_stores_manager_id ON stores(manager_id);
 
@@ -247,7 +261,6 @@ CREATE INDEX idx_truck_schedules_assistant_id ON truck_schedules(assistant_id);
 CREATE INDEX idx_truck_deliveries_schedule ON truck_item_deliveries(truck_schedule_id);
 
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_sessions_updated_at BEFORE UPDATE ON sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_stores_updated_at BEFORE UPDATE ON stores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_routes_updated_at BEFORE UPDATE ON routes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_trucks_updated_at BEFORE UPDATE ON trucks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -260,3 +273,5 @@ CREATE TRIGGER trg_train_schedules_updated_at BEFORE UPDATE ON train_schedules F
 CREATE TRIGGER trg_train_allocations_updated_at BEFORE UPDATE ON train_allocations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_truck_schedules_updated_at BEFORE UPDATE ON truck_schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_truck_item_deliveries_updated_at BEFORE UPDATE ON truck_item_deliveries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMIT;

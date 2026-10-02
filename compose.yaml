@@ -7,7 +7,6 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://postgres:fb836341-cb64-4e46-b2f8-af29f7057cbd@db:5432/kandypack
       - HOME=/tmp
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 
@@ -17,9 +16,10 @@ services:
     user: postgres
     volumes:
       - db-data:/var/lib/postgresql
+      - ./schema:/docker-entrypoint-initdb.d:ro
     environment:
       - POSTGRES_DB=kandypack
-      - POSTGRES_PASSWORD=fb836341-cb64-4e46-b2f8-af29f7057cbd
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
     expose:
       - "5432"
     healthcheck:
@@ -27,6 +27,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    secrets:
+      - db_password
 
 volumes:
   db-data:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
