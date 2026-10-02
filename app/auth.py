@@ -26,12 +26,13 @@ def register_user(name: str, email: str, password: str, confirm_password: str):
     try:
         user = fetch_one(
             "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING *;",
-            (name, email, password_hash)
+            (name, clean_email, password_hash)
         )
     except UniqueViolation:
         return None, "An account with this email already exists."
     except:
         return None, "An error occurred while creating the account. Please try again."
+    user = user._replace(password_hash=None)
     return user, "Account created successfully! Please sign in."
 
 def login_user(email: str, password: str):
@@ -43,7 +44,7 @@ def login_user(email: str, password: str):
         return None, "Please enter a valid email address."
 
     try:
-        user = fetch_one("SELECT id, email, password_hash FROM users WHERE email = %s;", (email,))
+        user = fetch_one("SELECT * FROM users WHERE email = %s;", (clean_email,))
         if not user:
             return None, "Invalid email or password."
     except Exception as e:
@@ -55,6 +56,7 @@ def login_user(email: str, password: str):
         if ph.check_needs_rehash(user.password_hash):
             new_hash = ph.hash(password)
             execute_query("UPDATE users SET password_hash = %s WHERE id = %s;", (new_hash, user.id))
+        user = user._replace(password_hash=None)
         return user, "Login successful!"
     except (VerifyMismatchError, InvalidHashError):
         return None, "Invalid email or password."
