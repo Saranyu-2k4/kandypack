@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project changelog (local developer notes, not for version control)
+changelog.txt
