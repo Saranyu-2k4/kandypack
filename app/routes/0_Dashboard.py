@@ -6,12 +6,12 @@ from db import safe_fetch_all
 
 st.set_page_config(
     page_title="Kandypack Supply Chain Overview",
-    page_icon="🚚",
+    page_icon="🚆",
     layout="wide",
 )
 
 def load_data(query: str, params: tuple = None) -> pd.DataFrame:
-    rows = safe_fetch_all(query, params)
+    rows, err = safe_fetch_all(query, params)
     if isinstance(rows, tuple) and rows[0] is None:
         st.error(f"Database error: {rows[1]}")
         return pd.DataFrame()
