@@ -164,6 +164,7 @@ CREATE TABLE orders (
     delivery_address       TEXT NOT NULL,
     contact_phone          VARCHAR(50) NOT NULL CHECK (contact_phone ~ '^[0-9\+\-\s\(\)\.]{7,20}$'),
     order_date             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivery_date          TIMESTAMPTZ NOT NULL,
     prefered_delivery_slot VARCHAR(100),
     created_by             UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_by             UUID REFERENCES users(id) ON DELETE SET NULL,

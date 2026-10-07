@@ -15,13 +15,13 @@ if st.session_state.authenticated:
     st.success(f"Logged in as **{st.session_state.user}**")
     st.button("Sign Out", on_click=logout, type="primary")
     pg = st.navigation([
-        st.Page("./pages/0_Dashboard.py"),
-        st.Page("./pages/1_Master_Data_and_Fleet.py"),
-        st.Page("./pages/2_Customer_Order_Processing.py"),
-        st.Page("./pages/3_Railway_Bulk_Transport.py"),
-        st.Page("./pages/4_Last_Mile_Road_Delivery.py"),
-        st.Page("./pages/5_Delivery_Status_Tracking.py"),
-        st.Page("./pages/6_Reporting_and_Analytics.py")
+        st.Page("./routes/0_Dashboard.py"),
+        st.Page("./routes/1_Master_Data_and_Fleet.py"),
+        st.Page("./routes/2_Customer_Order_Processing.py"),
+        st.Page("./routes/3_Railway_Bulk_Transport.py"),
+        st.Page("./routes/4_Last_Mile_Road_Delivery.py"),
+        st.Page("./routes/5_Delivery_Status_Tracking.py"),
+        st.Page("./routes/6_Reporting_and_Analytics.py")
     ])
     pg.run()
 
